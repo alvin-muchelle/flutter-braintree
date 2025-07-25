@@ -1,19 +1,8 @@
 package com.example.flutter_braintree;
 
-import io.flutter.embedding.engine.plugins.FlutterPlugin;
-import io.flutter.embedding.engine.plugins.activity.ActivityAware;
-import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
-import io.flutter.plugin.common.MethodCall;
-import io.flutter.plugin.common.MethodChannel;
-import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
-import io.flutter.plugin.common.MethodChannel.Result;
-import io.flutter.plugin.common.PluginRegistry.ActivityResultListener;
-import io.flutter.plugin.common.PluginRegistry.Registrar;
-
 import android.app.Activity;
 import android.content.Intent;
-
-
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.braintreepayments.api.DropInRequest;
@@ -30,56 +19,64 @@ import com.google.android.gms.wallet.WalletConstants;
 import java.io.Serializable;
 import java.util.HashMap;
 
-public class FlutterBraintreeDropIn  implements FlutterPlugin, ActivityAware, MethodCallHandler, ActivityResultListener, Serializable {
+import io.flutter.embedding.engine.plugins.FlutterPlugin;
+import io.flutter.embedding.engine.plugins.activity.ActivityAware;
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
+import io.flutter.plugin.common.MethodCall;
+import io.flutter.plugin.common.MethodChannel;
+import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
+import io.flutter.plugin.common.MethodChannel.Result;
+import io.flutter.plugin.common.PluginRegistry.ActivityResultListener;
+
+public class FlutterBraintreeDropIn implements FlutterPlugin, ActivityAware, MethodCallHandler, ActivityResultListener, Serializable {
   private static final int DROP_IN_REQUEST_CODE = 0x1337;
 
   private Activity activity;
   private Result activeResult;
-
-
-  public static void registerWith(Registrar registrar) {
-    final MethodChannel channel = new MethodChannel(registrar.messenger(), "flutter_braintree.drop_in");
-    FlutterBraintreeDropIn plugin = new FlutterBraintreeDropIn();
-    plugin.activity = registrar.activity();
-    registrar.addActivityResultListener(plugin);
-    channel.setMethodCallHandler(plugin);
-  }
+  private MethodChannel channel;
+  private ActivityPluginBinding activityBinding;
 
   @Override
-  public void onAttachedToEngine(FlutterPluginBinding binding) {
-    final MethodChannel channel = new MethodChannel(binding.getBinaryMessenger(), "flutter_braintree.drop_in");
+  public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
+    channel = new MethodChannel(binding.getBinaryMessenger(), "flutter_braintree.drop_in");
     channel.setMethodCallHandler(this);
   }
 
   @Override
-  public void onDetachedFromEngine(FlutterPluginBinding binding) {
-
+  public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+    if (channel != null) {
+      channel.setMethodCallHandler(null);
+    }
   }
 
   @Override
-  public void onAttachedToActivity(ActivityPluginBinding binding) {
+  public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
     activity = binding.getActivity();
+    activityBinding = binding;
     binding.addActivityResultListener(this);
   }
 
   @Override
   public void onDetachedFromActivityForConfigChanges() {
-    activity = null;
+    onDetachedFromActivity();
   }
 
   @Override
-  public void onReattachedToActivityForConfigChanges(ActivityPluginBinding binding) {
-    activity = binding.getActivity();
-    binding.addActivityResultListener(this);
+  public void onReattachedToActivityForConfigChanges(@NonNull ActivityPluginBinding binding) {
+    onAttachedToActivity(binding);
   }
 
   @Override
   public void onDetachedFromActivity() {
+    if (activityBinding != null) {
+      activityBinding.removeActivityResultListener(this);
+      activityBinding = null;
+    }
     activity = null;
   }
 
   @Override
-  public void onMethodCall(MethodCall call, Result result) {
+  public void onMethodCall(@NonNull MethodCall call, @NonNull Result result) {
     if (call.method.equals("start")) {
       String clientToken = call.argument("clientToken");
       String tokenizationKey = call.argument("tokenizationKey");
@@ -90,12 +87,11 @@ public class FlutterBraintreeDropIn  implements FlutterPlugin, ActivityAware, Me
       else if (tokenizationKey != null)
         token = tokenizationKey;
 
-      // For best results with 3ds 2.0, provide as many additional elements as possible.
       HashMap<String, String> billingAddress = call.argument("billingAddress");
       if(billingAddress != null){
         ThreeDSecurePostalAddress address = new ThreeDSecurePostalAddress();
-        address.setGivenName(billingAddress.get("givenName")); // ASCII-printable characters required, else will throw a validation error
-        address.setSurname(billingAddress.get("surname")); // ASCII-printable characters required, else will throw a validation error
+        address.setGivenName(billingAddress.get("givenName"));
+        address.setSurname(billingAddress.get("surname"));
         address.setPhoneNumber(billingAddress.get("phoneNumber"));
         address.setStreetAddress(billingAddress.get("streetAddress"));
         address.setExtendedAddress(billingAddress.get("extendedAddress"));
@@ -110,26 +106,17 @@ public class FlutterBraintreeDropIn  implements FlutterPlugin, ActivityAware, Me
         threeDSecureRequest.setAdditionalInformation(additionalInformation);
       }
 
-
-
       threeDSecureRequest.setAmount((String) call.argument("amount"));
       String email = call.argument("email");
       if(email != null){
         threeDSecureRequest.setEmail(email);
       }
-
       threeDSecureRequest.setVersionRequested(ThreeDSecureRequest.VERSION_2);
 
-
       DropInRequest dropInRequest = new DropInRequest();
-
       dropInRequest.setVaultManagerEnabled((Boolean) call.argument("vaultManagerEnabled"));
       dropInRequest.setThreeDSecureRequest(threeDSecureRequest);
       dropInRequest.setMaskCardNumber((Boolean) call.argument("maskCardNumber"));
-
-
-      //.collectDeviceData((Boolean) call.argument("collectDeviceData"))
-      // .requestThreeDSecureVerification((Boolean) call.argument("requestThreeDSecureVerification"))
 
       readGooglePaymentParameters(dropInRequest, call);
       readPayPalParameters(dropInRequest, call);
@@ -181,7 +168,6 @@ public class FlutterBraintreeDropIn  implements FlutterPlugin, ActivityAware, Me
     paypalRequest.setCurrencyCode((String) arg.get("currencyCode"));
     paypalRequest.setDisplayName((String) arg.get("displayName"));
     paypalRequest.setBillingAgreementDescription((String) arg.get("billingAgreementDescription"));
-
     dropInRequest.setPayPalRequest(paypalRequest);
   }
 

@@ -1,12 +1,10 @@
 package com.example.flutter_braintree;
 
 import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
-
-
-
 import java.util.Map;
+
+import androidx.annotation.NonNull;
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
 import io.flutter.embedding.engine.plugins.activity.ActivityAware;
@@ -15,7 +13,6 @@ import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
-import io.flutter.plugin.common.PluginRegistry.Registrar;
 import io.flutter.plugin.common.PluginRegistry.ActivityResultListener;
 
 public class FlutterBraintreePlugin implements FlutterPlugin, ActivityAware, MethodCallHandler, ActivityResultListener {
@@ -23,21 +20,13 @@ public class FlutterBraintreePlugin implements FlutterPlugin, ActivityAware, Met
 
   private Activity activity;
   private Result activeResult;
-
+  private MethodChannel channel;
   private FlutterBraintreeDropIn dropIn;
-
-  public static void registerWith(Registrar registrar) {
-    FlutterBraintreeDropIn.registerWith(registrar);
-    final MethodChannel channel = new MethodChannel(registrar.messenger(), "flutter_braintree.custom");
-    FlutterBraintreePlugin plugin = new FlutterBraintreePlugin();
-    plugin.activity = registrar.activity();
-    registrar.addActivityResultListener(plugin);
-    channel.setMethodCallHandler(plugin);
-  }
+  private ActivityPluginBinding activityBinding;
 
   @Override
-  public void onAttachedToEngine(FlutterPluginBinding binding) {
-    final MethodChannel channel = new MethodChannel(binding.getBinaryMessenger(), "flutter_braintree.custom");
+  public void onAttachedToEngine(@NonNull FlutterPluginBinding binding) {
+    channel = new MethodChannel(binding.getBinaryMessenger(), "flutter_braintree.custom");
     channel.setMethodCallHandler(this);
 
     dropIn = new FlutterBraintreeDropIn();
@@ -45,39 +34,50 @@ public class FlutterBraintreePlugin implements FlutterPlugin, ActivityAware, Met
   }
 
   @Override
-  public void onDetachedFromEngine(FlutterPluginBinding binding) {
-    dropIn.onDetachedFromEngine(binding);
-    dropIn = null;
+  public void onDetachedFromEngine(@NonNull FlutterPluginBinding binding) {
+    if (channel != null) {
+      channel.setMethodCallHandler(null);
+    }
+    if (dropIn != null) {
+      dropIn.onDetachedFromEngine(binding);
+      dropIn = null;
+    }
   }
 
   @Override
-  public void onAttachedToActivity(ActivityPluginBinding binding) {
+  public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
     activity = binding.getActivity();
+    activityBinding = binding;
     binding.addActivityResultListener(this);
-    dropIn.onAttachedToActivity(binding);
+    if (dropIn != null) {
+      dropIn.onAttachedToActivity(binding);
+    }
   }
 
   @Override
   public void onDetachedFromActivityForConfigChanges() {
-    activity = null;
-    dropIn.onDetachedFromActivity();
+    onDetachedFromActivity();
   }
 
   @Override
-  public void onReattachedToActivityForConfigChanges(ActivityPluginBinding binding) {
-    activity = binding.getActivity();
-    binding.addActivityResultListener(this);
-    dropIn.onReattachedToActivityForConfigChanges(binding);
+  public void onReattachedToActivityForConfigChanges(@NonNull ActivityPluginBinding binding) {
+    onAttachedToActivity(binding);
   }
 
   @Override
   public void onDetachedFromActivity() {
+    if (activityBinding != null) {
+      activityBinding.removeActivityResultListener(this);
+      activityBinding = null;
+    }
     activity = null;
-    dropIn.onDetachedFromActivity();
+    if (dropIn != null) {
+      dropIn.onDetachedFromActivity();
+    }
   }
 
   @Override
-  public void onMethodCall(MethodCall call, Result result) {
+  public void onMethodCall(@NonNull MethodCall call, @NonNull Result result) {
     if (activeResult != null) {
       result.error("already_running", "Cannot launch another custom activity while one is already running.", null);
       return;
@@ -119,7 +119,7 @@ public class FlutterBraintreePlugin implements FlutterPlugin, ActivityAware, Met
   public boolean onActivityResult(int requestCode, int resultCode, Intent data) {
     if (activeResult == null)
       return false;
-    
+
     switch (requestCode) {
       case CUSTOM_ACTIVITY_REQUEST_CODE:
         if (resultCode == Activity.RESULT_OK) {
